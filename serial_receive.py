@@ -4,10 +4,11 @@ import asyncio
 from bleak import BleakScanner, BleakClient
 import numpy as np
 import socket
+import time
 
-host, port = "127.0.0.1", 49200
-sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-sock.connect((host, port))
+# host, port = "127.0.0.1", 49200
+# sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+# sock.connect((host, port))
 
 
 # today = date.today()
@@ -38,7 +39,9 @@ def calculate_rpm(q1, q2, rate):
 async def main():
     devices = await BleakScanner.discover()
     peripheral = None
+    print([d.name for d in devices])
     for d in devices:
+        
         if d.name == "Seeed":
             print(f"found {d}")
             peripheral = d
@@ -48,6 +51,7 @@ async def main():
                 print(f'Connected to {peripheral.address}')
                 val = await client.read_gatt_char(char_uuid)    
                 print(val)
+                time.sleep(1)
                 # convert to quaternion
                 # calculate rpm
                 # send to socket
