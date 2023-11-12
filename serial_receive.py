@@ -5,38 +5,19 @@ from bleak import BleakScanner, BleakClient
 import numpy as np
 import socket
 import time
+import numpy as np
+from ahrs.filters import EKF
+from ahrs.common.orientation import acc2q
+import math
 
-# host, port = "127.0.0.1", 49200
-# sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-# sock.connect((host, port))
-
-
-# today = date.today()
-# start_time = datetime.now().strftime("%H:%M:%S")
-# root = "C:/Users/Yu Kit/Desktop/FYP/Data"
-# current = os.path.join(root, str(today))
-# if str(today) not in os.listdir(root):
-#     os.mkdir(os.path.join(root, str(today)))
-
-
-#     store_folder = f"{root}/Data/{today}/{start_time}.csv"
 
 char_uuid = '19b10001-e8f2-537e-4f6c-d104768a1214'
 
-def euler_to_quaternions(comms):
-    roll, yaw, pitch = comms.split(",")
-    qx = np.sin(roll/2) * np.cos(pitch/2) * np.cos(yaw/2) - np.cos(roll/2) * np.sin(pitch/2) * np.sin(yaw/2)
-    qy = np.cos(roll/2) * np.sin(pitch/2) * np.cos(yaw/2) + np.sin(roll/2) * np.cos(pitch/2) * np.sin(yaw/2)
-    qz = np.cos(roll/2) * np.cos(pitch/2) * np.sin(yaw/2) - np.sin(roll/2) * np.sin(pitch/2) * np.cos(yaw/2)
-    qw = np.cos(roll/2) * np.cos(pitch/2) * np.cos(yaw/2) + np.sin(roll/2) * np.sin(pitch/2) * np.sin(yaw/2)
-    sum_squared = (qx**2+qy**2+qz**2+qw**2)**0.5
-    return np.divide(np.array([qx, qy, qz, qw]), sum_squared)
-
-
-def calculate_rpm(q1, q2, rate):
-    pass
 
 async def main():
+    f = 1.51
+    ekf = EKF(magnetic_ref=69.0, frequency=f)
+    q = np.array([1,0,0,0])
     devices = await BleakScanner.discover()
     peripheral = None
     print([d.name for d in devices])
@@ -48,14 +29,22 @@ async def main():
     if peripheral:
         async with BleakClient(peripheral.address) as client:
             while client:
-                print(f'Connected to {peripheral.address}')
-                val = await client.read_gatt_char(char_uuid)    
-                print(val)
-                time.sleep(1)
-                # convert to quaternion
-                # calculate rpm
-                # send to socket
+                val = await client.read_gatt_char(char_uuid)
+                [iteration, period, acclX, acclY, acclZ, gyroX, gyroY, gyroZ, magX, magY, magZ] = [float(i) for i in val.decode("utf-8").split(",")]
+                print([iteration, period, acclX, acclY, acclZ, gyroX, gyroY, gyroZ, magX, magY, magZ])
+                gyro_data = np.array([gyroX, gyroY, gyroZ])
+                accl_data = np.array([acclX, acclY, acclZ])
+                mag_data = np.array([magX, magY, magZ])
+                j = ekf.update(q=q, gyr=gyro_data, acc=accl_data, mag=mag_data)
+                # calculate RPM
+                angle = 2*math.degrees(math.acos(abs(np.dot(q,j))))
+                print(angle)
+                q = j
+                print(q)
+                # await asyncio.sleep()
                 # perform kalman filter
+                # calculate rpm
+                # plot
                 
 
 

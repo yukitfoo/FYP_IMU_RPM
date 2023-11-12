@@ -37,9 +37,6 @@ LSM6DS3 myIMU(I2C_MODE, 0x6A);    //I2C device address 0x6A
 Adafruit_MMC5603 mmc = Adafruit_MMC5603(12345);
 
 String start = "0,0,0";
-int x = 0;
-int y = 10;
-int z = 20;
 bool connected = false;
 float acclX;
 float acclY;
@@ -50,16 +47,19 @@ float gyroZ;
 float magX;
 float magY;
 float magZ;
+long int prev_time;
+long int current_time;
+long int time_diff;
+long int iter; 
 
 BLEService gestureService(deviceServiceUuid); 
-BLEStringCharacteristic gestureCharacteristic(deviceServiceCharacteristicUuid, BLERead | BLENotify, 20);
+BLEStringCharacteristic gestureCharacteristic(deviceServiceCharacteristicUuid, BLERead | BLENotify, 150);
 
 // the setup function runs once when you press reset or power the board
 void setup() {
   // initialize digital pin LED_BUILTIN as an output.
   pinMode(LED_BUILTIN, OUTPUT);
   Serial.begin(9600);
-  Serial.println("Nano 33 BLE (Peripheral Device)");
   while (!Serial);  
   //Call .begin() to configure the IMUs
   if (myIMU.begin() != 0) {
@@ -72,11 +72,15 @@ void setup() {
     /* There was a problem detecting the MMC5603 ... check your connections */
     Serial.println("Ooops, no MMC5603 detected ... Check your wiring!");
     while (1) delay(10);
+  } else {
+    Serial.println("MMC OK!");
   }
   // Call begin to configure BLE
   if (!BLE.begin()) {
     Serial.println("- Starting Bluetooth® Low Energy module failed!");
     while (1);
+  } else {
+    Serial.println("BLE advertised");
   }
   BLE.setLocalName("Seeed");
   BLE.setDeviceName("Seeed");
@@ -85,7 +89,10 @@ void setup() {
   BLE.addService(gestureService);
   gestureCharacteristic.writeValue(start);
   BLE.advertise();
-
+  Serial.println("Nano 33 BLE (Peripheral Device)");
+  prev_time = 0.0;
+  current_time = 0.0;
+  iter = 0;
 }
 
 // the loop function runs over and over again forever
@@ -102,6 +109,9 @@ void loop() {
   }
 
   while(central.connected()) {
+    time_diff = current_time - prev_time;
+    prev_time = current_time;
+    current_time = millis();
     // get accelerometer data
     acclX = myIMU.readFloatAccelX();
     acclY = myIMU.readFloatAccelY();
@@ -115,9 +125,9 @@ void loop() {
     magX = event.magnetic.x;
     magY = event.magnetic.y;
     magZ = event.magnetic.z;
-
     
-    gestureCharacteristic.writeValue(String(acclX, 4)+","+String(acclY, 4)+","+String(acclZ, 4)+String(gyroX, 4)+","+String(gyroY, 4)+","+String(gyroZ, 4)+","+String(magX, 4)+","+String(magY, 4)+","+String(magZ, 4));
-    delay(10);
+    gestureCharacteristic.writeValue(String(iter) + ","+ String(time_diff , 4) + "," +String(acclX, 2)+","+String(acclY, 2)+","+String(acclZ, 2)+","+String(gyroX, 2)+","+String(gyroY, 2)+","+String(gyroZ, 2)+","+String(magX, 2)+","+String(magY, 2)+","+String(magZ, 2));
+    iter++;
+    delay(1);
   }
 }
