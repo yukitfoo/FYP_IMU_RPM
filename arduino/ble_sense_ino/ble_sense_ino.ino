@@ -27,9 +27,9 @@
 #include "Wire.h"
 #include <Adafruit_MMC56x3.h>
 
+// set characteristics for ble
 const char* deviceServiceUuid = "19b10000-e8f2-537e-4f6c-d104768a1214";
 const char* deviceServiceCharacteristicUuid = "19b10001-e8f2-537e-4f6c-d104768a1214";
-
 
 //Create a instance of class LSM6DS3
 LSM6DS3 myIMU(I2C_MODE, 0x6A);    //I2C device address 0x6A
@@ -128,6 +128,5 @@ void loop() {
     
     gestureCharacteristic.writeValue(String(iter) + ","+ String(time_diff , 4) + "," +String(acclX, 2)+","+String(acclY, 2)+","+String(acclZ, 2)+","+String(gyroX, 2)+","+String(gyroY, 2)+","+String(gyroZ, 2)+","+String(magX, 2)+","+String(magY, 2)+","+String(magZ, 2));
     iter++;
-    delay(1);
   }
 }
