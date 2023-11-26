@@ -23,18 +23,18 @@
 */
 
 #include <ArduinoBLE.h>
-#include "LSM6DS3.h"
 #include "Wire.h"
-#include <Adafruit_MMC56x3.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BNO055.h>
+#include <utility/imumaths.h>
 
 // set characteristics for ble
 const char* deviceServiceUuid = "19b10000-e8f2-537e-4f6c-d104768a1214";
 const char* deviceServiceCharacteristicUuid = "19b10001-e8f2-537e-4f6c-d104768a1214";
 
-//Create a instance of class LSM6DS3
-LSM6DS3 myIMU(I2C_MODE, 0x6A);    //I2C device address 0x6A
-/* Assign a unique ID to this sensor at the same time */
-Adafruit_MMC5603 mmc = Adafruit_MMC5603(12345);
+// Create instance of BNO055
+Adafruit_BNO055 bno = Adafruit_BNO055(55);
+
 
 String start = "0,0,0";
 bool connected = false;
@@ -51,9 +51,17 @@ long int prev_time;
 long int current_time;
 long int time_diff;
 long int iter; 
+imu::Vector<3> euler;
+
 
 BLEService gestureService(deviceServiceUuid); 
 BLEStringCharacteristic gestureCharacteristic(deviceServiceCharacteristicUuid, BLERead | BLENotify, 150);
+
+enum {
+  CALIBRATION_STATE = 0,
+  RUNNING_STATE
+} STATE;
+
 
 // the setup function runs once when you press reset or power the board
 void setup() {
@@ -62,20 +70,13 @@ void setup() {
   Serial.begin(9600);
   while (!Serial);  
   //Call .begin() to configure the IMUs
-  if (myIMU.begin() != 0) {
+  if (!bno.begin()) {
       Serial.println("IMU error");
       while (1);
   } else {
       Serial.println("IMU OK!");
   }
-  // Call begin to configure magnetometer
-  if (!mmc.begin(MMC56X3_DEFAULT_ADDRESS, &Wire)) {  // I2C mode
-    /* There was a problem detecting the MMC5603 ... check your connections */
-    Serial.println("Ooops, no MMC5603 detected ... Check your wiring!");
-    while (1);
-  } else {
-    Serial.println("MMC OK!");
-  }
+
   // Call begin to configure BLE
   if (!BLE.begin()) {
     Serial.println("- Starting Bluetooth® Low Energy module failed!");
@@ -94,6 +95,35 @@ void setup() {
   prev_time = 0.0;
   current_time = 0.0;
   iter = 0;
+  delay(1000);
+  STATE = CALIBRATION_STATE;
+}
+String displayCalStatus(void)
+{
+  /* Get the four calibration values (0..3) */
+  /* Any sensor data reporting 0 should be ignored, */
+  /* 3 means 'fully calibrated" */
+  uint8_t system, gyro, accel, mag;
+  system = gyro = accel = mag = 0;
+  bno.getCalibration(&system, &gyro, &accel, &mag);
+
+  /* The data should be ignored until the system calibration is > 0 */
+  Serial.print("\t");
+  if (!system)
+  {
+    Serial.print("! ");
+  }
+
+  String f = String(system, DEC) +","+String(gyro, DEC) +","+String(accel, DEC) +","+String(mag, DEC);
+  return f;
+}
+
+String sendData(void) {
+  imu::Vector<3> euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
+  imu::Quaternion quat = bno.getQuat();
+  imu::Vector<3> gravity = bno.getVector(Adafruit_BNO055::VECTOR_GRAVITY );
+  String f = String(euler.x(), 4) + "," + String(euler.y(), 4) + "," + String(euler.z(), 4) + "," + String(quat.w(), 4) + "," + String(quat.x(), 4) + "," + String(quat.y(), 4) + "," + String(quat.z(), 4) + "," + String(gravity.x(), 4) + "," + String(gravity.y(), 4) + "," + String(gravity.z(), 4);
+  return f;
 }
 
 // the loop function runs over and over again forever
@@ -109,25 +139,30 @@ void loop() {
     digitalWrite(LED_BUILTIN, HIGH); 
   }
 
-  while(central.connected()) {
-    time_diff = current_time - prev_time;
-    prev_time = current_time;
-    current_time = millis();
-    // get accelerometer data
-    acclX = myIMU.readFloatAccelX();
-    acclY = myIMU.readFloatAccelY();
-    acclZ = myIMU.readFloatAccelZ();
-    // get gyroscope data
-    gyroX = myIMU.readFloatGyroX();
-    gyroY = myIMU.readFloatGyroY();
-    gyroZ = myIMU.readFloatGyroZ();
-    // get magnetometer data
-    mmc.getEvent(&event);
-    magX = event.magnetic.x;
-    magY = event.magnetic.y;
-    magZ = event.magnetic.z;
-    
-    gestureCharacteristic.writeValue(String(iter) + ","+ String(time_diff , 4) + "," +String(acclX, 2)+","+String(acclY, 2)+","+String(acclZ, 2)+","+String(gyroX, 2)+","+String(gyroY, 2)+","+String(gyroZ, 2)+","+String(magX, 2)+","+String(magY, 2)+","+String(magZ, 2));
-    iter++;
+  if (STATE == CALIBRATION_STATE) {
+    String stat = displayCalStatus();
+    gestureCharacteristic.writeValue(stat);
+    Serial.println(stat);
+    if (stat == "3,3,3,3") {
+      STATE = RUNNING_STATE;
+    }
+  } else if (STATE == RUNNING_STATE) {
+    String toSend = sendData();
+    gestureCharacteristic.writeValue(toSend);
+    Serial.println(toSend);
   }
+  /* Get a new sensor event */ 
+  bno.getEvent(&event);
+  
+  /* Display the floating point data */
+  // Serial.print("X: ");
+  // Serial.print(event.orientation.x, 4);
+  // Serial.print("\tY: ");
+  // Serial.print(event.orientation.y, 4);
+  // Serial.print("\tZ: ");
+  // Serial.print(event.orientation.z, 4);
+  // Serial.println("");
+
+  
+  delay(10);
 }

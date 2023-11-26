@@ -67,11 +67,12 @@ EKF EKF_IMU(quaternionData, EKF_PINIT, EKF_QINIT, EKF_RINIT,
 #define IMU_ACC_Z0          (1)
 
 /* Magnetic vector constant (align with local magnetic vector) */
+// affected
 float_prec IMU_MAG_B0_data[3] = {cos(0), sin(0), 0.000000};
 Matrix IMU_MAG_B0(3, 1, IMU_MAG_B0_data);
 
 /* The hard-magnet bias */
-float_prec HARD_IRON_BIAS_data[3] = {8.832973, 7.243323, 23.95714};
+float_prec HARD_IRON_BIAS_data[3] = {36.38, 9.72, -78.71};
 Matrix HARD_IRON_BIAS(3, 1, HARD_IRON_BIAS_data);
 
 /* An MPU9250 object with the MPU-9250 sensor on I2C bus 0 with address 0x68 */
@@ -81,7 +82,8 @@ SimpleMPU9250 IMU(Wire, 0x68);
 enum {
     STATE_EKF_RUNNING = 0,
     STATE_MAGNETO_BIAS_IDENTIFICATION,
-    STATE_NORTH_VECTOR_IDENTIFICATION
+    STATE_NORTH_VECTOR_IDENTIFICATION,
+    STATE_BLE_CONNECT
 } STATE_AHRS;
 
 
@@ -100,6 +102,7 @@ const char* deviceServiceUuid = "19b10000-e8f2-537e-4f6c-d104768a1214";
 const char* deviceServiceCharacteristicUuid = "19b10001-e8f2-537e-4f6c-d104768a1214";
 BLEService gestureService(deviceServiceUuid); 
 BLEStringCharacteristic gestureCharacteristic(deviceServiceCharacteristicUuid, BLERead | BLENotify, 150);
+BLEDevice central;
 
 //Create a instance of class LSM6DS3
 LSM6DS3 myIMU(I2C_MODE, 0x6A);    //I2C device address 0x6A
@@ -113,15 +116,48 @@ void setup() {
     Serial.println("Calibrating IMU bias...");
 
     /* IMU initialization ----------------------------------------- */
-    int status = IMU.begin();   /* start communication with IMU */
-    if (status < 0) {
-        Serial.println("IMU initialization unsuccessful");
-        Serial.println("Check IMU wiring or try cycling power");
-        Serial.print("Status: ");
-        Serial.println(status);
-        while(1) {}
+    if (myIMU.begin() != 0) {
+        Serial.println("IMU error");
+        while (1);
+    } else {
+        Serial.println("IMU OK!");
+    }
+    // Call begin to configure magnetometer
+    if (!mmc.begin(MMC56X3_DEFAULT_ADDRESS, &Wire)) {  // I2C mode
+      /* There was a problem detecting the MMC5603 ... check your connections */
+      Serial.println("Ooops, no MMC5603 detected ... Check your wiring!");
+      while (1);
+    } else {
+      Serial.println("MMC OK!");
+    }
+    // Call begin to configure BLE
+    if (!BLE.begin()) {
+      Serial.println("- Starting Bluetooth® Low Energy module failed!");
+      while (1);
+    } else {
+      Serial.println("BLE advertised");
     }
     
+    /* BLE initialization ----------------------------------------- */
+    
+    BLE.setLocalName("Seeed");
+    BLE.setDeviceName("Seeed");
+    BLE.setAdvertisedService(gestureService);
+    gestureService.addCharacteristic(gestureCharacteristic);
+    BLE.addService(gestureService);
+    gestureCharacteristic.writeValue(String(0));
+    BLE.advertise();
+    Serial.println("BLE started and advertised");
+    central = BLE.central();
+    while (!central.connected()) {
+      central = BLE.central();
+      if (central) {
+        Serial.print("Connected to central: ");
+        // print the central's MAC address:
+        Serial.println(central.address());
+      }
+    }
+
     /* RLS initialization ----------------------------------------- */
     RLS_theta.vSetToZero();
     RLS_P.vSetIdentity();
@@ -142,21 +178,39 @@ void setup() {
 
 
 void loop() {
+    sensors_event_t event;
+    // // checks if connected
+    // if (!central.connected()) {
+    //   STATE_AHRS = STATE_BLE_CONNECT;
+    // }
+    
+    // // if not connected, try to find a connection else continue with 
+    if (!central.connected()) {
+      central = BLE.central();
+      if (central) {
+        Serial.print("Connected to central: ");
+        // print the central's MAC address:
+        Serial.println(central.address());
+      }
+      STATE_AHRS = STATE_EKF_RUNNING;
+    }
+    
     
     if (timerCollectData >= SS_DT_MILIS) {      /* We running the RLS/EKF at sampling time = 20 ms */
         timerCollectData = 0;
         
         /* Read the raw data */
-        IMU.readSensor();
-        float Ax = IMU.getAccelX_mss();
-        float Ay = IMU.getAccelY_mss();
-        float Az = IMU.getAccelZ_mss();
-        float Bx = IMU.getMagX_uT();
-        float By = IMU.getMagY_uT();
-        float Bz = IMU.getMagZ_uT();
-        float p = IMU.getGyroX_rads();
-        float q = IMU.getGyroY_rads();
-        float r = IMU.getGyroZ_rads();
+        // IMU.readSensor();
+        mmc.getEvent(&event);
+        float Ax = myIMU.readFloatAccelX();
+        float Ay = myIMU.readFloatAccelY();
+        float Az = myIMU.readFloatAccelZ();
+        float Bx = event.magnetic.x;
+        float By = event.magnetic.y;
+        float Bz = event.magnetic.z;
+        float p = myIMU.readFloatGyroX();
+        float q = myIMU.readFloatGyroY();
+        float r = myIMU.readFloatGyroZ();
             
         if (STATE_AHRS == STATE_EKF_RUNNING) {  /* Run the EKF algorithm */
             
@@ -170,6 +224,7 @@ void loop() {
             Y[3][0] = Bx; Y[4][0] = By; Y[5][0] = Bz;
             
             /* Compensating Hard-Iron Bias for magnetometer */
+            // affected
             Y[3][0] = Y[3][0]-HARD_IRON_BIAS[0][0];
             Y[4][0] = Y[4][0]-HARD_IRON_BIAS[1][0];
             Y[5][0] = Y[5][0]-HARD_IRON_BIAS[2][0];
@@ -180,6 +235,7 @@ void loop() {
             Y[1][0] = Y[1][0] / _normG;
             Y[2][0] = Y[2][0] / _normG;
             float_prec _normM = sqrt(Y[3][0] * Y[3][0]) + (Y[4][0] * Y[4][0]) + (Y[5][0] * Y[5][0]);
+            // unaffected
             Y[3][0] = Y[3][0] / _normM;
             Y[4][0] = Y[4][0] / _normM;
             Y[5][0] = Y[5][0] / _normM;
@@ -189,6 +245,7 @@ void loop() {
             /* ============================= Update the Kalman Filter ============================== */
             u64compuTime = micros();
             if (!EKF_IMU.bUpdate(Y, U)) {
+              // this resets the data
                 quaternionData.vSetToZero();
                 quaternionData[0][0] = 1.0;
                 EKF_IMU.vReset(quaternionData, EKF_PINIT, EKF_QINIT, EKF_RINIT);
@@ -250,6 +307,12 @@ void loop() {
             /* You should not be here! */
             STATE_AHRS = STATE_EKF_RUNNING;
         }
+
+            
+        /* Send data via BLE */    
+        quaternionData = EKF_IMU.GetX();
+        gestureCharacteristic.writeValue(String(quaternionData[0][0], 5)+","+String(quaternionData[1][0], 5)+","+String(quaternionData[2][0], 5)+","+String(quaternionData[3][0], 5)+","+String(Ax, 5)+","+String(Ay, 5)+","+String(Az, 5));
+   
     }
     
     
@@ -274,7 +337,7 @@ void loop() {
                 STATE_AHRS = STATE_MAGNETO_BIAS_IDENTIFICATION;
                 
             } else if (cmd == 'p') {
-                
+                /*Deprecated*/
                 Serial.println("North vector value:");
                 snprintf(bufferTxSer, sizeof(bufferTxSer)-1, "%f %f %f\r\n", IMU_MAG_B0[0][0], IMU_MAG_B0[1][0], IMU_MAG_B0[2][0]);
                 Serial.print(bufferTxSer);
@@ -295,6 +358,7 @@ void loop() {
                 Serial.print('\n');
                 
             } else if (cmd == 'q') {
+                /*Deprecated: only prints quaternion when q is signalled, instead advertise q as message in BLE*/
                 /* =========================== Print to serial (for plotting) ========================== */
                 quaternionData = EKF_IMU.GetX();
 
@@ -331,12 +395,14 @@ void loop() {
                 STATE_AHRS = STATE_EKF_RUNNING;
                 
             } else if (cmd == 'f') {
-                float Ax = IMU.getAccelX_mss();
-                float Ay = IMU.getAccelY_mss();
-                float Az = IMU.getAccelZ_mss();
-                float Bx = IMU.getMagX_uT() - HARD_IRON_BIAS[0][0];
-                float By = IMU.getMagY_uT() - HARD_IRON_BIAS[1][0];
-                float Bz = IMU.getMagZ_uT() - HARD_IRON_BIAS[2][0];
+              // affected
+                mmc.getEvent(&event);
+                float Ax = myIMU.readFloatAccelX();
+                float Ay = myIMU.readFloatAccelY();
+                float Az = myIMU.readFloatAccelZ();
+                float By = event.magnetic.x;
+                float Bx = event.magnetic.y;
+                float Bz = event.magnetic.z;
                 
                 /* Normalizing the acceleration vector & projecting the gravitational vector (gravity is negative acceleration) */
                 float_prec _normG = sqrt((Ax * Ax) + (Ay * Ay) + (Az * Az));
@@ -371,6 +437,11 @@ void loop() {
 
         }
     }
+
+    /* Send data via BLE */    
+    // quaternionData = EKF_IMU.GetX();
+    // gestureCharacteristic.writeValue(String(quaternionData[0][0], 5)+","+String(quaternionData[1][0], 5)+","+String(quaternionData[2][0], 5)+","+String(quaternionData[3][0], 5)+","+String(Ax, 5)+","+String(Ay, 5)+","+String(Az, 5));
+
 }
 
 
