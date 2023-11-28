@@ -13,6 +13,7 @@ char_uuid = '19b10001-e8f2-537e-4f6c-d104768a1214'
 
 
 async def main():
+    f = 1/0.600
     ekf = EKF(magnetic_ref=69.0, frequency=f)
     q = np.array([1,0,0,0])
     devices = await BleakScanner.discover()

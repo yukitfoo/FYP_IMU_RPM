@@ -120,9 +120,12 @@ String displayCalStatus(void)
 
 String sendData(void) {
   imu::Vector<3> euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
-  imu::Quaternion quat = bno.getQuat();
+  imu::Vector<3> accel = bno.getVector(Adafruit_BNO055::VECTOR_ACCELEROMETER);
   imu::Vector<3> gravity = bno.getVector(Adafruit_BNO055::VECTOR_GRAVITY );
-  String f = String(euler.x(), 4) + "," + String(euler.y(), 4) + "," + String(euler.z(), 4) + "," + String(quat.w(), 4) + "," + String(quat.x(), 4) + "," + String(quat.y(), 4) + "," + String(quat.z(), 4) + "," + String(gravity.x(), 4) + "," + String(gravity.y(), 4) + "," + String(gravity.z(), 4);
+  imu::Vector<3> gyro = bno.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE  );
+  double angular_velocity = pow(pow(gyro.x(), 2) + pow(gyro.y(), 2) + pow(gyro.z(), 2), 0.5);
+  double RPM = angular_velocity*60/6.283185;
+  String f = String(euler.x(), 4) + "," + String(euler.y(), 4) + "," + String(euler.z(), 4) + "," + String(accel.x(), 4) + "," + String(accel.y(), 4) + "," + String(accel.z(), 4) + "," + String(gravity.x(), 4) + "," + String(gravity.y(), 4) + "," + String(gravity.z(), 4) + "," + String(RPM, 2);
   return f;
 }
 
