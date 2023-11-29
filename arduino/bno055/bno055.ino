@@ -56,7 +56,7 @@ imu::Vector<3> euler;
 
 BLEService gestureService(deviceServiceUuid); 
 BLEStringCharacteristic gestureCharacteristic(deviceServiceCharacteristicUuid, BLERead | BLENotify, 150);
-
+int calibration = 0;
 enum {
   CALIBRATION_STATE = 0,
   RUNNING_STATE
@@ -123,6 +123,9 @@ String sendData(void) {
   imu::Vector<3> accel = bno.getVector(Adafruit_BNO055::VECTOR_ACCELEROMETER);
   imu::Vector<3> gravity = bno.getVector(Adafruit_BNO055::VECTOR_GRAVITY );
   imu::Vector<3> gyro = bno.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE  );
+  accel[0] -= gravity[0];
+  accel[1] -= gravity[1];
+  accel[2] -= gravity[2];
   double angular_velocity = pow(pow(gyro.x(), 2) + pow(gyro.y(), 2) + pow(gyro.z(), 2), 0.5);
   double RPM = angular_velocity*60/6.283185;
   String f = String(euler.x(), 4) + "," + String(euler.y(), 4) + "," + String(euler.z(), 4) + "," + String(accel.x(), 4) + "," + String(accel.y(), 4) + "," + String(accel.z(), 4) + "," + String(gravity.x(), 4) + "," + String(gravity.y(), 4) + "," + String(gravity.z(), 4) + "," + String(RPM, 2);
@@ -147,7 +150,11 @@ void loop() {
     gestureCharacteristic.writeValue(stat);
     Serial.println(stat);
     if (stat == "3,3,3,3") {
-      STATE = RUNNING_STATE;
+      if (calibration > 10){
+        STATE = RUNNING_STATE;
+      }
+      
+      calibration++;
     }
   } else if (STATE == RUNNING_STATE) {
     String toSend = sendData();
