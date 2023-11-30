@@ -6,7 +6,7 @@ import numpy as np
 import time
 import math
 
-host, port = "127.0.0.1", 25010
+host, port = "127.0.0.1", 25020
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 char_uuid = '19b10001-e8f2-537e-4f6c-d104768a1214'
 y = [0,1,0]
@@ -26,6 +26,8 @@ def calculate_tangent(opposite, adjacent):
         else:
             return 0
     # at +opposite +adjacent
+    if adjacent == 0:
+        return 90
     theta = math.degrees(math.atan(abs(opposite)/abs(adjacent)))
     if opposite < 0:
         #  at -opposite -adjacent
@@ -46,8 +48,12 @@ def calculate_euclidean_distance(l):
     
 # X
 def calculate_y_tangent(vector):
+    if vector == [0,0,0]:
+        return 0
     d = calculate_euclidean_distance([vector[0], vector[2]])
     y = vector[1]
+    if d == 0:
+        return 0
     theta = math.degrees(math.atan(abs(y)/abs(d)))
     if y == 0:
         theta = 0
@@ -57,6 +63,8 @@ def calculate_y_tangent(vector):
 
 
 def calculate_cross_product(a,b):
+    if a==0 and b==0:
+        return 0
     c = [0]*3
     c[0] = a[1]*b[2] - b[1]*a[2]
     c[1] = -(a[0]*b[2] - b[0]*a[2])
@@ -114,7 +122,6 @@ def filter_accel(l):
 
 
 async def con(sock):
-    accum = ""
     peripheral = False
     devices = await BleakScanner.discover()
     for d in devices:
@@ -124,21 +131,27 @@ async def con(sock):
             peripheral = d
     if peripheral:
         async with BleakClient(peripheral.address) as client:
-            prev = 0
+            prev_time = 0
             # i = 0
             while client:
                 val = await client.read_gatt_char(char_uuid)
+                if prev_time == 0:
+                    prev_time = time.time()
+                    current_time = prev_time
+                else:
+                    current_time = time.time()
                 current = [float(i) for i in val.decode("utf-8").split(",")]
                 # euler angles index 0,1,2
                 current_euler = current[0:3]
                 # acceleration unit vector index 3,4,5 
                 current_accel = filter_accel(current[3:6])
                 normalizing_accel = calculate_euclidean_distance(current_accel)
-                current_accel = [i/normalizing_accel for i in current_accel]
+                if current_accel != [0,0,0]:
+                    current_accel = [i/normalizing_accel for i in current_accel]
                 # gravity unit vector index 6,7,8
                 current_gravity = current[6:9]
                 normalizing_gravity = calculate_euclidean_distance(current_gravity)
-                current_gravity = [i/normalizing_accel for i in current_gravity]
+                current_gravity = [i/normalizing_gravity for i in current_gravity]
                 # calculate spherical coordinates
                 aX, aY = calculate_y_tangent(current_accel), calculate_tangent(current_accel[0],current_accel[2])
                 bX, bY = calculate_y_tangent(current_gravity), calculate_tangent(current_gravity[0],current_gravity[2])
@@ -150,16 +163,17 @@ async def con(sock):
                 gravity_spherical = [bX, bY, 0]
                 camera_rotation = [aX, aY, deg]
                 # RPM index 9
-                current_RPM = current[-1]
-                print(current_euler, accel_spherical, gravity_spherical, camera_rotation, current_RPM)
-                to_send = f"{','.join(map(str, current_euler))};{','.join(map(str,accel_spherical))};{','.join(map(str, gravity_spherical))};{','.join(map(str,camera_rotation))};{str(current_RPM)}"
-                accum += to_send+"\n"
+                current_period = (current_time - prev_time)
+                prev_time = current_time
+                print(current_euler, accel_spherical, gravity_spherical, camera_rotation, current_period)
+                to_send = f"{','.join(map(str, current_euler))};{','.join(map(str,accel_spherical))};{','.join(map(str, gravity_spherical))};{','.join(map(str,camera_rotation))};{str(current_period)}"
+                
                 sock.sendall(to_send.encode("utf-8"))
                 response = sock.recv(1024).decode("utf-8")
                 print(response)
                 time.sleep(0.01)
+                
                 # i+=1
-    return accum
 
                 
     # x = 10
@@ -180,7 +194,7 @@ async def con(sock):
 
 # Connect to a port
 sock.connect((host, port))
-a = asyncio.run(con(sock))
+asyncio.run(con(sock))
 sock.close()
 # f.write(a)
 # f.close()

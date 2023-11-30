@@ -51,7 +51,9 @@ long int prev_time;
 long int current_time;
 long int time_diff;
 long int iter; 
+bool first = true;
 imu::Vector<3> euler;
+// imu::Quaternion prev_quat;
 
 
 BLEService gestureService(deviceServiceUuid); 
@@ -123,12 +125,26 @@ String sendData(void) {
   imu::Vector<3> accel = bno.getVector(Adafruit_BNO055::VECTOR_ACCELEROMETER);
   imu::Vector<3> gravity = bno.getVector(Adafruit_BNO055::VECTOR_GRAVITY );
   imu::Vector<3> gyro = bno.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE  );
+  // imu::Quaternion quat = bno.getQuat();
+  // double RPM = 0;
+  // if (first) {
+  //   prev_quat = quat;
+  //   first = false;
+  // } else {
+  //   double theta_1 = acos(prev_quat.w());
+  //   double theta_2 = acos(quat.w());
+  //   double dot_prod = prev_quat.x()*quat.x() + prev_quat.y()*quat.y() + prev_quat.z()*quat.z();
+  //   double angle = acos((cos(theta_1/2)*cos(theta_2/2))+(dot_prod*(sin(theta_1/2)*sin(theta_2/2))));
+  //   RPM = angle*60/6.283185;
+  //   Serial.println(String(RPM, 3) + " , " + String(angle, 4));
+  // }
   accel[0] -= gravity[0];
   accel[1] -= gravity[1];
   accel[2] -= gravity[2];
-  double angular_velocity = pow(pow(gyro.x(), 2) + pow(gyro.y(), 2) + pow(gyro.z(), 2), 0.5);
-  double RPM = angular_velocity*60/6.283185;
-  String f = String(euler.x(), 4) + "," + String(euler.y(), 4) + "," + String(euler.z(), 4) + "," + String(accel.x(), 4) + "," + String(accel.y(), 4) + "," + String(accel.z(), 4) + "," + String(gravity.x(), 4) + "," + String(gravity.y(), 4) + "," + String(gravity.z(), 4) + "," + String(RPM, 2);
+  // double angular_velocity = pow(pow(gyro.x(), 2) + pow(gyro.y(), 2) + pow(gyro.z(), 2), 0.5);
+
+  // double RPM = angular_velocity*60/6.283185;
+  String f = String(euler.x(), 4) + "," + String(euler.y(), 4) + "," + String(euler.z(), 4) + "," + String(accel.x(), 4) + "," + String(accel.y(), 4) + "," + String(accel.z(), 4) + "," + String(gravity.x(), 4) + "," + String(gravity.y(), 4) + "," + String(gravity.z(), 4);
   return f;
 }
 
