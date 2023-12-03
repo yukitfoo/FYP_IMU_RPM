@@ -79,35 +79,71 @@ def calculate_cos(n1, n2):
         return 0
     return math.degrees(math.acos(abs(adotb)/abs(prod_of_mag)))
 
+def find_delta(a, g):
+    if a < 0:
+        a += 360
+    if g < 0:
+        g += 360
+    deg = g-a
+    if deg > 180:
+        deg = deg - 360
+
+    return deg
+
+
+# 
+def fix_angle(aX, aY, bX, bY, deg):
+    X_delta = find_delta(aX, bX)
+    Y_delta = find_delta(aY, bY)
+    if Y_delta==180 or Y_delta==0:
+        if 0 <= X_delta <= 180:
+            return 0
+        elif -180 < X_delta < 0:
+            return 180
+    elif 0 < Y_delta < 180:
+        if 0 <= X_delta <= 180:
+            return deg
+        elif -180 <= X_delta <= 0:
+            return 180-deg
+    elif -180 < Y_delta < 0:
+        if 0 <= X_delta <=180:
+            return -deg
+        elif -180 <= X_delta <= 0:
+            return -180+deg
+    return deg
+
 
 def transform_degrees(a, b, deg):
     [aX, aY] = a
     [bX, bY] = b
     if aX == bX and aY == bY:
-        return deg
+        return deg, 1
     if aX == bX:
         # for completely same unit vectors and its absolute equal 
         if aY == bY-180:
-            return deg
+            return deg, 2
         else:
             # chack if Y values are equal, larger or smaller than
             if aY > bY:
-                return deg + 180
+                return deg + 180, 3
             # aY==bY case covered above
             else:
-                return 180 - deg
+                return 180 - deg, 4
     elif aX < bX:
         if aY <= bY:
-            return deg
+            return deg, 5
         else:
-            return -deg
+            if aY > bY and abs(bY-aY) > 90:
+                return 180+deg, 6
+            else:
+                return -deg, 7
     else:
         if aY == bY:
-            return 180
+            return 180, 8
         elif aY < bY:
-            return 180 - deg
+            return 180 - deg, 9
         else:
-            return -180 + deg
+            return -180 + deg, 10
     
 # f = open("C:\\Users\\Yu Kit\\Desktop\\FYP\\Data\\data.csv", "w")
 
@@ -158,15 +194,15 @@ async def con(sock):
                 AY = calculate_cross_product(current_accel, y)
                 AB = calculate_cross_product(current_accel, current_gravity)
                 deg = calculate_cos(AY, AB)
-                deg = transform_degrees([aX, aY],[bX, bY], deg)
+                deg_transformed = fix_angle(aX, aY, bX, bY, deg)
                 accel_spherical = [aX, aY, 0]
                 gravity_spherical = [bX, bY, 0]
-                camera_rotation = [aX, aY, deg]
+                camera_rotation = [aX, aY, deg_transformed]
                 # RPM index 9
                 current_period = (current_time - prev_time)
                 prev_time = current_time
                 print(current_euler, accel_spherical, gravity_spherical, camera_rotation, current_period)
-                to_send = f"{','.join(map(str, current_euler))};{','.join(map(str,accel_spherical))};{','.join(map(str, gravity_spherical))};{','.join(map(str,camera_rotation))};{str(current_period)}"
+                to_send = f"{','.join(map(str, current_euler))};{','.join(map(str,accel_spherical))};{','.join(map(str, gravity_spherical))};{','.join(map(str,camera_rotation))};{str(current_period)};{str(deg)}"
                 
                 sock.sendall(to_send.encode("utf-8"))
                 response = sock.recv(1024).decode("utf-8")

@@ -22,6 +22,8 @@ public class BLE : MonoBehaviour
     Vector3 gravityRotation = Vector3.zero;
     Vector3 cameraRotation = Vector3.zero;
     double time_ms;
+    double deg; 
+    int t;
     //Vector3 currentEuler = Vector3.zero;
     public GameObject ball;
     public GameObject accelPointer;
@@ -75,7 +77,8 @@ public class BLE : MonoBehaviour
             accelRotation = ParseData(current[1]);
             gravityRotation = ParseData(current[2]);
             cameraRotation = ParseData(current[3]);
-            time_ms = Convert.ToDouble(current[current.Length - 1]);
+            time_ms = Convert.ToDouble(current[4]);
+            deg = Convert.ToDouble(current[5]);
             nwStream.Write(buffer, 0, bytesRead);
         }
     }
@@ -138,7 +141,7 @@ public class BLE : MonoBehaviour
                 double RPM = angleSubtended/(accumTime*6);
                 //Debug.Log(accumTime +","+RPM +","+angleSubtended+","+(prevPosition[0]-currPosition[0]) + "," + (prevPosition[1] - currPosition[1]) + "," + (prevPosition[2] - currPosition[2]));
                 Debug.Log(angleSubtended);
-                gui.SetText("RPM: " + RPM.ToString("F0")+"\n"+ "Angle: "+ angleSubtended.ToString("F0"));
+                gui.SetText("RPM: " + RPM.ToString("F0")+"\n"+ "Angle: "+ angleSubtended.ToString("F0") + "\n"+"aX: "+ accelRotation[0]+"\n" + "aY: " + accelRotation[1] + "\n" + "bX: " + gravityRotation[0] + "\n" + "bY: " + gravityRotation[1] + "\n" + "Deg: " + deg + "\n");
                 // rotate previos tracker to track current location
                 trackerRotaterPrev.transform.rotation = Quaternion.Euler(ballRotation);
                 accumTime= 0;
